@@ -1,0 +1,31 @@
+﻿syntax = "proto3";
+
+package devicelink.v1;
+
+option csharp_namespace = "DeviceLink.Contracts";
+
+import "google/protobuf/timestamp.proto";
+
+service TelemetryService {
+  // Станція → Api: один довгий потік точок; підсумок, коли станція закриває потік.
+  rpc UploadTelemetry (stream TelemetryPoint) returns (UploadSummary);
+
+  // Viewer ← Api: точки, поки клієнт підписаний.
+  rpc SubscribeTelemetry (SubscribeRequest) returns (stream TelemetryPoint);
+}
+
+message TelemetryPoint {
+  string station_id = 1;
+  uint32 seq = 2;
+  sfixed32 lat_e7 = 3;
+  sfixed32 lon_e7 = 4;
+  google.protobuf.Timestamp received_at = 5;
+}
+
+message UploadSummary {
+  uint64 accepted = 1;
+}
+
+message SubscribeRequest {
+  string station_id = 1;  // порожній рядок = усі станції
+}

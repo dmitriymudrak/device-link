@@ -1,13 +1,26 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-  <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\DeviceLink.Protocol\DeviceLink.Protocol.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Google.ProtocolBuffers" Version="2.4.1.555" />
+		<PackageReference Include="Grpc.Net.Client" Version="2.85.0" />
+		<PackageReference Include="Grpc.Tools" Version="2.85.0">
+			<PrivateAssets>all</PrivateAssets>
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+		</PackageReference>
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="..\DeviceLink.Api\DeviceLink.Api.csproj" />
+		<ProjectReference Include="..\DeviceLink.Protocol\DeviceLink.Protocol.csproj" />
+	</ItemGroup>
+	<ItemGroup>
+		<Protobuf Include="..\DeviceLink.Api\Protos\devicelink.proto" GrpcServices="Client" />
+	</ItemGroup>
 
 </Project>

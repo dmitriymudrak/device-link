@@ -21,11 +21,8 @@ namespace DeviceLink.Simulator
                 };
 
                 var route = new Route(
-                [(50.4501, 30.5234),
-                (50.4547, 30.5238),
-                (50.4510, 30.5300)],
-                stepsPerSegment: 10
-                );
+                [(50.4501, 30.5234), (50.4700, 30.5600), (50.4350, 30.5700), (50.4250, 30.5150)],
+                stepsPerSegment: 60);
 
                 var sender = new TelemetrySender(route, TimeSpan.FromSeconds(1));
                 try

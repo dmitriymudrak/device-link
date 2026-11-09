@@ -17,7 +17,7 @@ namespace DeviceLink.Simulator
         public Telemetry Next()
         {
             int segment = _step / _stepsPerSegment;
-            double t = (_step % _stepsPerSegment) / _stepsPerSegment;
+            double t = (double)(_step % _stepsPerSegment) / _stepsPerSegment;
 
             var from = _points[segment];
             var to = _points[(segment + 1) % _points.Length];

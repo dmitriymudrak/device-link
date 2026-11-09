@@ -1,0 +1,22 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
+        x:Class="DeviceLink.Viewer.Desktop.MainWindow"
+        Title="DeviceLink Viewer"
+        Width="1100" Height="700">
+
+	<Grid ColumnDefinitions="260,*">
+		<DockPanel Grid.Column="0" Margin="8">
+			<TextBlock DockPanel.Dock="Top"
+                       Text="Станції"
+                       FontWeight="Bold"
+                       Margin="0,0,0,8" />
+			<ListBox x:Name="StationsList" />
+		</DockPanel>
+
+		<ContentControl Grid.Column="1" x:Name="MapHost" />
+	</Grid>
+
+</Window>

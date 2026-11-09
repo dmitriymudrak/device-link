@@ -1,12 +1,16 @@
 ﻿using DeviceLink.Protocol;
+using System.Buffers;
 using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading.Channels;
 
 namespace DeviceLink.GroundStation
 {
     public sealed class DroneListener(IPEndPoint endpoint, Action<byte,Telemetry> onTelemetry)
     {
+        private volatile Channel<Command>? _commands;
+        private int _nextCommandId;
         public async Task RunAsync(CancellationToken ct)
         {
             using (var listener = new TcpListener(endpoint))
@@ -20,24 +24,53 @@ namespace DeviceLink.GroundStation
                 }
             }
         }
+        public bool TrySend(CommandCode code)
+        {
+            var commands = _commands;
+            if (commands is null)
+                return false;
+
+            var id = (ushort)Interlocked.Increment(ref _nextCommandId);
+            return commands.Writer.TryWrite(new Command(id, code, 0));
+        }
+
+        private static async Task WriteCommandsAsync(Stream stream, ChannelReader<Command> commands, CancellationToken ct)
+        {
+            var buffer = new ArrayBufferWriter<byte>(64);
+            byte sequence = 0;
+            await foreach (var command in commands.ReadAllAsync(ct))
+            {
+                buffer.ResetWrittenCount();
+                command.WriteFrame(buffer, sequence++);
+                await stream.WriteAsync(buffer.WrittenMemory, ct);
+            }
+        }
 
         private async Task HandleAsync(TcpClient client, CancellationToken ct)
         {
-            using (client)
+            var stream = client.GetStream();
+            var commands = Channel.CreateBounded<Command>(16);
+            using var connection = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            _commands = commands;
+            try
             {
-                try
-                {
-                    var reader = PipeReader.Create(client.GetStream());
-                    await TelemetryReader.ReadAsync(reader, onTelemetry, ct);
-                }
-                catch(IOException)
-                {
-                    //drone off
-                }
-                catch(Exception ex) when (ex is IOException or OperationCanceledException)
-                {
-                    //connection issue
-                }
+                var reader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
+                Task read = TelemetryReader.ReadAsync(reader, onTelemetry, connection.Token);
+                Task write = WriteCommandsAsync(stream, commands.Reader, connection.Token);
+                await await Task.WhenAny(read, write);
+            }
+            catch (IOException)
+            {
+                // дрон відключився — чекаємо наступного підключення
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                Console.Error.WriteLine($"Помилка з'єднання з дроном: {ex}");
+            }
+            finally
+            {
+                _commands = null;
+                connection.Cancel();
             }
         }
     }

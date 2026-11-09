@@ -35,7 +35,7 @@ namespace DeviceLink.GroundStation.Runner
                 try
                 {
                     Task[] tasks = [listener.RunAsync(cts.Token), forwarder.RunAsync(cts.Token)];
-                    await Task.WhenAny(tasks);
+                    await await Task.WhenAny(tasks);
                 }
                 catch (OperationCanceledException) when (cts.IsCancellationRequested)
                 {

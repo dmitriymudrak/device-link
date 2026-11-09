@@ -1,0 +1,21 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeviceLink.GroundStation.Desktop.MainWindow"
+        Title="DeviceLink — станція"
+        Width="440" Height="300">
+
+	<StackPanel Margin="16" Spacing="12">
+		<TextBlock x:Name="StationText" FontWeight="Bold" FontSize="16" />
+		<TextBlock x:Name="LinkText" Text="Дрон: очікування підключення" />
+		<TextBlock x:Name="PositionText" Text="—" FontFamily="Consolas, monospace" />
+
+		<StackPanel Orientation="Horizontal" Spacing="8">
+			<Button x:Name="HoldButton" Content="Зависнути" />
+			<Button x:Name="ResumeButton" Content="Продовжити" />
+			<Button x:Name="DestroyButton" Content="Знищити" Background="#C62828" Foreground="White" />
+		</StackPanel>
+
+		<TextBlock x:Name="LogText" TextWrapping="Wrap" Foreground="Gray" />
+	</StackPanel>
+
+</Window>

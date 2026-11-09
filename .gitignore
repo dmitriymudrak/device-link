@@ -43,10 +43,12 @@ ScaffoldingReadMe.txt
 ~$*
 *~
 CodeCoverage/
-
+DeviceLink.Simulator/
+DeviceLink.GroundStation/
+DeviceLink.Tests/
 # MSBuild Binary and Structured Log
 *.binlog
-
+.vs
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*

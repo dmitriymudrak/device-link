@@ -1,0 +1,15 @@
+[
+  {
+    "Name": "Новый профиль",
+    "Projects": [
+      {
+        "Path": "DeviceLink.GroundStation.Runner\\DeviceLink.GroundStation.Runner.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "DeviceLink.Simulator\\DeviceLink.Simulator.csproj",
+        "Action": "Start"
+      }
+    ]
+  }
+]

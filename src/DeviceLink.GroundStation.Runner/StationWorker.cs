@@ -17,22 +17,29 @@ namespace DeviceLink.GroundStation.Runner
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             var o = options.Value;
-            if (string.IsNullOrEmpty(o.AccessToken))
-                logger.LogWarning("Station:AccessToken is not set, Api will reject telemetry upload");
+            if (o.Auth.IsConfigured)
+                logger.LogInformation("Using client credentials of {ClientId} for Api calls", o.Auth.ClientId);
+            else if (string.IsNullOrEmpty(o.AccessToken))
+                logger.LogWarning("Neither Station:Auth nor Station:AccessToken is set, Api will reject telemetry upload");
 
-            var listener = new DroneListener(new IPEndPoint(IPAddress.Loopback, o.Port), (seq, t) =>
+            var endpoint = new IPEndPoint(IPAddress.Parse(o.ListenAddress), o.Port);
+            var listener = new DroneListener(endpoint, (seq, t) =>
             {
                 logger.LogInformation("seq={Seq,3} lat={Lat:F7} lon={Lon:F7}", seq, t.Latitude, t.Longitude);
                 forwarder.Enqueue(seq, t);
             }, listenerLogger);
 
-            logger.LogInformation("Station {Station}: drone port {Port}, Api {Api}. Ctrl+C to stop",
-                o.StationId, o.Port, o.ApiAddress);
+            logger.LogInformation("Station {Station}: drone endpoint {Endpoint}, Api {Api}. Ctrl+C to stop",
+                o.StationId, endpoint, o.ApiAddress);
 
             try
             {
                 Task[] tasks = [listener.RunAsync(stoppingToken), forwarder.RunAsync(stoppingToken)];
                 await await Task.WhenAny(tasks);
+
+                // Both loops run forever; finishing without cancellation means the station is no longer working.
+                logger.LogCritical("Station loop exited unexpectedly, stopping");
+                lifetime.StopApplication();
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

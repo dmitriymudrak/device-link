@@ -30,11 +30,18 @@ namespace DeviceLink.GroundStation.Runner
                 builder.Services.AddOptions<RunnerOptions>().BindConfiguration(RunnerOptions.Section)
                     .ValidateDataAnnotations().ValidateOnStart();
 
+                // Client credentials when Station:Auth:ClientId is set, otherwise the static Station:AccessToken.
+                if (builder.Configuration.GetSection($"{RunnerOptions.Section}:Auth")["ClientId"] is { Length: > 0 })
+                    builder.Services.AddHttpClient<IAccessTokenProvider, ClientCredentialsTokenProvider>();
+                else
+                    builder.Services.AddSingleton<IAccessTokenProvider, StaticAccessTokenProvider>();
+
                 builder.Services.AddSingleton(sp =>
                 {
                     var o = sp.GetRequiredService<IOptions<RunnerOptions>>().Value;
+                    var tokens = sp.GetRequiredService<IAccessTokenProvider>();
                     return new ApiForwarder(o.ApiAddress, o.StationId,
-                        () => Task.FromResult(o.AccessToken ?? ""),
+                        () => tokens.GetAccessTokenAsync(),
                         sp.GetRequiredService<ILogger<ApiForwarder>>());
                 });
                 builder.Services.AddHostedService<StationWorker>();

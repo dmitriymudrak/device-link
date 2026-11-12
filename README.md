@@ -8,28 +8,58 @@
 - **Дрон (симулятор)** летить маршрутом і раз на секунду шле координати. Виконує команди станції: зависнути, продовжити, знищитися.
 - **Наземна станція** (десктоп або консоль) приймає дрона, показує його стан і координати, керує ним кнопками, пересилає телеметрію на бекенд. Без зв'язку з бекендом тримає останні 10 с і досилає їх після відновлення.
 - **Бекенд (Api)** приймає потоки телеметрії від багатьох станцій і роздає їх підписникам.
-- **Viewer** (десктоп з картою або консоль) показує всі станції: маркер кожного дрона, а для вибраної станції — слід руху.
+- **Viewer** (десктоп з картою) показує всі станції: маркер кожного дрона, а для вибраної станції — слід руху.
 
 ## Швидкий старт
 
-Потрібен [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0).
+Потрібні [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), Docker і Windows (десктопна станція зберігає сесію через DPAPI).
 
-```bash
-# Windows (PowerShell)
-./run.ps1
+**1. Бекенд у Docker** — Keycloak, Postgres, Api, консольна станція й симулятор:
 
-# Linux / macOS
-./run.sh
+```powershell
+docker compose --profile apps up -d --build
 ```
 
-Скрипт збирає рішення і запускає Api, десктопну станцію, симулятор і десктопний Viewer. Відкриються два вікна:
+**2. Десктопні застосунки на хості:**
 
-- **станція:** «Дрон: на зв'язку», координати, кнопки «Зависнути», «Продовжити», «Знищити»;
-- **Viewer:** карта Києва з маркером дрона; клік на станцію в списку зліва показує її слід.
+```powershell
+./run-desktop.ps1                # збирає і запускає станцію з вікном, Viewer і локальний симулятор
+./run-desktop.ps1 -SkipBuild     # без збірки
+./run-desktop.ps1 -NoSimulator   # без локального симулятора
+```
 
-Закриття будь-якого з вікон або `Ctrl+C` зупиняє все.
+Скрипт перевіряє, що Keycloak (`localhost:8080`) і Api (`localhost:5100`) доступні, і відкриває два вікна:
 
-Без вікон (Api, консольна станція, симулятор): `./run-services.ps1`.
+- **станція:** спершу вхід через браузер (`telemetry-sender` / `1234`, див. [Користувачі й ролі](#користувачі-й-ролі)), далі «Дрон: на зв'язку», координати, кнопки «Зависнути», «Продовжити», «Знищити». Локальний симулятор стартує, коли станція після входу відкриє порт 5000;
+- **Viewer:** карта Києва з маркерами дронів — і локальної станції, і `docker-station-1` з контейнера; клік на станцію в списку зліва показує її слід. Поки у Viewer немає входу, Api відхиляє його підписку (потрібна роль `viewer`), і в заголовку вікна видно «Api недоступний (Unauthenticated)».
+
+Закриття будь-якого з вікон або `Ctrl+C` зупиняє все, що запустив скрипт. Контейнери працюють далі: `docker compose --profile apps stop`.
+
+### Користувачі й ролі
+
+Realm `device-link-realm` (`realms/realm-export.json`) імпортується з тестовими користувачами. Пароль у всіх — **`1234`**.
+
+| Користувач | Пароль | Ролі | Для чого |
+|---|---|---|---|
+| `telemetry-sender` | `1234` | `telemetry-sender` | вхід у десктопну станцію |
+| `viewer` | `1234` | `viewer` | перегляд телеметрії (Viewer) |
+| `drone-operator` | `1234` | `drone-operator`, `viewer` | оператор дрона |
+| `service-account-station-runner` | — (секрет клієнта) | `telemetry-sender` | консольна станція в Docker, client credentials |
+
+| Роль | Що дає |
+|---|---|
+| `telemetry-sender` | вхід у десктопну станцію; `UploadTelemetry` в Api |
+| `viewer` | `SubscribeTelemetry` в Api |
+| `drone-operator` | керування дроном; у коді поки не перевіряється (кнопки станції доступні всім із `telemetry-sender`) |
+| `Admin` | у коді не використовується |
+
+Клієнти: `desktop-app` (публічний, вхід через браузер для десктопних застосунків), `dashboard-api` (audience для Api), `station-runner` (конфіденційний, секрет `station-runner-dev-secret`).
+
+Адмінка Keycloak: `http://localhost:8080`, `admin` / `admin`.
+
+Імпорт realm спрацьовує лише для порожньої бази. Якщо Keycloak уже запускався раніше, нові користувачі й клієнти з `realm-export.json` у нього не потраплять. Тоді або додайте їх в адмінці (клієнт `station-runner` — скриптом `./realms/add-station-runner.sh`), або почніть з чистої бази: `docker compose down -v` (видаляє **всі** дані Keycloak), потім `docker compose --profile apps up -d`.
+
+Варіант без контейнерів застосунків: `docker compose up -d` (лише Keycloak і Postgres), потім `./run.ps1` — те саме, що `run-desktop.ps1`, але Api запускається локально.
 
 Запуск частин вручну:
 
@@ -39,11 +69,25 @@ dotnet run --project src/DeviceLink.GroundStation.Desktop    # станція з
 dotnet run --project src/DeviceLink.GroundStation.Runner     # або консольна: [порт] [адреса Api] [id станції]
 dotnet run --project src/DeviceLink.Simulator                # [хост] [порт], за замовчуванням 127.0.0.1 5000
 dotnet run --project src/DeviceLink.Viewer.Desktop           # карта
-dotnet run --project src/DeviceLink.Viewer                   # або консоль: [адреса Api] [id станції]
 dotnet test
 ```
 
 На одному порту може працювати лише одна станція: десктопна і консольна одночасно — на різних портах.
+
+### Docker
+
+```bash
+docker compose up -d                          # лише Keycloak + Postgres (для run.ps1)
+docker compose --profile apps up -d --build   # + Api, консольна станція і симулятор у контейнерах
+docker compose --profile apps logs -f runner  # телеметрія станції
+```
+
+У контейнерах працює ланцюжок «симулятор → станція (`docker-station-1`) → Api». Десктопні застосунки запускаються на хості (`run-desktop.ps1`): Keycloak — `localhost:8080`, Api — `localhost:5100`. `run.ps1` не запускайте одночасно з профілем `apps`, бо обидва займають порт 5100.
+
+- Консольна станція отримує токен сама, через client credentials клієнта `station-runner` (сервісний акаунт з роллю `telemetry-sender`). Секрет для розробки — `station-runner-dev-secret`, змінюється змінною `STATION_RUNNER_SECRET`.
+- Keycloak видає токени з `iss=http://localhost:8080/...` і для хоста, і для контейнерів (`KC_HOSTNAME` + `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`). Api в контейнері читає discovery з `http://keycloak:8080` (`Jwt__MetadataAddress`).
+- `--import-realm` не оновлює realm, який уже є в базі. Якщо Keycloak запускався до появи `station-runner`, додайте клієнт скриптом `./realms/add-station-runner.sh`. Повторний запуск нічого не змінює.
+- У контейнерах логи йдуть лише в stdout (`LogFile__Enabled=false`); поза Docker — ще й у `%LOCALAPPDATA%\DeviceLink\logs`.
 
 ## Архітектура
 
@@ -125,7 +169,6 @@ src/
   DeviceLink.GroundStation.Runner/    консольна станція
   DeviceLink.Api/                     Protos, TelemetryHub, TelemetryGrpcService
   DeviceLink.Viewer.Desktop/          карта (Avalonia + Mapsui): DroneMapLayer, MainWindow
-  DeviceLink.Viewer/                  консольний Viewer
 tests/
   DeviceLink.Tests/                   xUnit: CRC, запис і розбір кадру, Telemetry, Command
 ```
@@ -181,7 +224,7 @@ tests/
 
 - Дрон не підтверджує команди (Ack ще немає). Доставку гарантує TCP, поки з'єднання живе.
 - «Тихо» мертве (напіввідкрите) з'єднання не помітно, доки не додано heartbeat.
-- Без автентифікації й TLS.
+- Без TLS. Viewer поки без входу, тож Api відхиляє його підписку.
 - Хаб Api в пам'яті одного процесу: історії немає, Viewer бачить лише точки після підключення.
 - При обриві зв'язку з Api губиться одна точка, яку саме відправляли.
 - Маршрут інтерполюється лінійно в градусах — добре для кількох кілометрів, не для великих відстаней.

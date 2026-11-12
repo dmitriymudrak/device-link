@@ -64,6 +64,12 @@ namespace DeviceLink.GroundStation
                         logger.LogWarning(ex, "Api {Address} unavailable ({Status}), retry in 2 s", apiAddress, ex.StatusCode);
                         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                     }
+                    catch (Exception ex) when (ex is not OperationCanceledException && !cancellationToken.IsCancellationRequested)
+                    {
+                        // e.g. the token provider failed (identity provider not reachable yet)
+                        logger.LogWarning(ex, "Upload to {Address} failed, retry in 2 s", apiAddress);
+                        await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                    }
                 }
             }
         }

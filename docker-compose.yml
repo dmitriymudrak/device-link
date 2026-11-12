@@ -1,3 +1,10 @@
+# Infrastructure only (Keycloak + Postgres), as before:
+#   docker compose up -d
+# Full headless pipeline (simulator -> runner -> api) in containers as well:
+#   docker compose --profile apps up -d --build
+# The desktop apps (GroundStation.Desktop, Viewer.Desktop) keep running on the host
+# and reach Keycloak at localhost:8080 and the Api at localhost:5100.
+
 services:
   postgres:
     image: postgres:16
@@ -9,7 +16,7 @@ services:
       - kc_db:/var/lib/postgresql/data
 
   keycloak:
-    image: quay.io/keycloak/keycloak:latest
+    image: quay.io/keycloak/keycloak:26.8.2   # same version as realms/realm-export.json
     command: start-dev --import-realm
     environment:
       KC_BOOTSTRAP_ADMIN_USERNAME: admin
@@ -18,12 +25,60 @@ services:
       KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: keycloak
+      # Tokens always carry iss=http://localhost:8080/..., whether requested from the host
+      # or from containers via http://keycloak:8080 (backchannel URLs follow the request host).
+      KC_HOSTNAME: http://localhost:8080
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
     ports:
       - "8080:8080"
     volumes:
-      - ./realms:/opt/keycloak/data/import   # сюди json-файли realm
+      - ./realms:/opt/keycloak/data/import   # realm json files go here
     depends_on:
       - postgres
+
+  api:
+    profiles: [apps]
+    build:
+      context: .
+      dockerfile: src/DeviceLink.Api/Dockerfile
+    environment:
+      # Public issuer (must match the tokens) + internal discovery address.
+      Jwt__Authority: http://localhost:8080/realms/device-link-realm
+      Jwt__MetadataAddress: http://keycloak:8080/realms/device-link-realm/.well-known/openid-configuration
+      Jwt__RequireHttpsMetadata: "false"
+    ports:
+      - "5100:5100"
+    depends_on:
+      - keycloak
+    restart: unless-stopped
+
+  runner:
+    profiles: [apps]
+    build:
+      context: .
+      dockerfile: src/DeviceLink.GroundStation.Runner/Dockerfile
+    environment:
+      Station__StationId: docker-station-1
+      Station__ApiAddress: http://api:5100
+      Station__Auth__TokenEndpoint: http://keycloak:8080/realms/device-link-realm/protocol/openid-connect/token
+      Station__Auth__ClientId: station-runner
+      Station__Auth__ClientSecret: ${STATION_RUNNER_SECRET:-station-runner-dev-secret}
+    depends_on:
+      - api
+    restart: unless-stopped
+
+  simulator:
+    profiles: [apps]
+    build:
+      context: .
+      dockerfile: src/DeviceLink.Simulator/Dockerfile
+    environment:
+      Simulator__Host: runner
+      Simulator__Port: "5000"
+    depends_on:
+      - runner
+    # The simulator exits after each session (disconnect or Destroy command); restart reconnects it.
+    restart: unless-stopped
 
 volumes:
   kc_db:

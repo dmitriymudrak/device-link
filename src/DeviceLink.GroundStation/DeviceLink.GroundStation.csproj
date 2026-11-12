@@ -7,8 +7,9 @@
 	</PropertyGroup>
 
 	<ItemGroup>
-		<PackageReference Include="Google.ProtocolBuffers" Version="2.4.1.555" />
+		<PackageReference Include="Google.Protobuf" Version="3.36.2" />
 		<PackageReference Include="Grpc.Net.Client" Version="2.85.0" />
+		<PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="11.0.0" />
 		<PackageReference Include="Grpc.Tools" Version="2.85.0">
 			<PrivateAssets>all</PrivateAssets>
 			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -16,10 +17,10 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\DeviceLink.Api\DeviceLink.Api.csproj" />
 		<ProjectReference Include="..\DeviceLink.Protocol\DeviceLink.Protocol.csproj" />
 	</ItemGroup>
 	<ItemGroup>
+		<!-- Client stubs are generated here from the Api contract; no reference to the Api project itself. -->
 		<Protobuf Include="..\DeviceLink.Api\Protos\devicelink.proto" GrpcServices="Client" />
 	</ItemGroup>
 

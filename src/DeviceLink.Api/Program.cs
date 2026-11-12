@@ -17,12 +17,19 @@ namespace DeviceLink.Api
                 builder.AddDeviceLinkLogging("Api");
 
                 builder.Services.AddGrpc();
+
+                // Section "Jwt": Authority, Audience, RequireHttpsMetadata and, for containers,
+                // MetadataAddress (internal Keycloak URL) when it differs from the public issuer.
+                var jwt = builder.Configuration.GetSection("Jwt");
                 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 .AddJwtBearer(o =>
                 {
-                    o.Authority = "http://localhost:8080/realms/device-link-realm";
-                    o.Audience = "dashboard-api";
-                    o.RequireHttpsMetadata = false;
+                    o.Authority = jwt["Authority"]
+                        ?? throw new InvalidOperationException("Configuration value Jwt:Authority is required");
+                    o.Audience = jwt["Audience"] ?? "dashboard-api";
+                    o.RequireHttpsMetadata = jwt.GetValue("RequireHttpsMetadata", true);
+                    if (!string.IsNullOrWhiteSpace(jwt["MetadataAddress"]))
+                        o.MetadataAddress = jwt["MetadataAddress"]!;
                     o.MapInboundClaims = false;
                     o.TokenValidationParameters.RoleClaimType = "roles";
                     o.TokenValidationParameters.NameClaimType = "preferred_username";

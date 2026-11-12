@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/.vs/
+**/*.user
+**/*.Backup.tmp
+.git/
+.github/
+tests/
+realms/
+*.png
+*.md

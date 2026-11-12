@@ -8,6 +8,7 @@ using System.Threading.Channels;
 
 namespace DeviceLink.GroundStation
 {
+    /// <summary>Buffers station telemetry and streams it to the Api over gRPC with a Bearer token and reconnects.</summary>
     public sealed class ApiForwarder(string apiAddress, string stationId, 
         Func<Task<string>> getAccessToken, ILogger<ApiForwarder> logger)
     {
@@ -17,6 +18,7 @@ namespace DeviceLink.GroundStation
                 FullMode = BoundedChannelFullMode.DropOldest
             });
 
+        /// <summary>Queues a telemetry point for upload; drops the oldest points when the queue is full.</summary>
         public void Enqueue(byte seq, Telemetry telemetry)
         {
             _queue.Writer.TryWrite(new TelemetryPoint
@@ -29,6 +31,7 @@ namespace DeviceLink.GroundStation
             });
         }
 
+        /// <summary>Sends the queue to the Api via a streaming UploadTelemetry call; retries after 2 s on RpcException.</summary>
         public async Task RunAsync(CancellationToken cancellationToken)
         {
             var callCreds = CallCredentials.FromInterceptor(async (_, metadata) =>
@@ -42,6 +45,7 @@ namespace DeviceLink.GroundStation
             {
 
                 var client = new TelemetryService.TelemetryServiceClient(channel);
+                logger.LogInformation("Forwarding telemetry of {Station} to {Address}", stationId, apiAddress);
                 while (true)
                 {
                     try
@@ -56,8 +60,8 @@ namespace DeviceLink.GroundStation
                     }
                     catch (RpcException ex) when (!cancellationToken.IsCancellationRequested)
                     {
-                        // +Unauthenticated, токен експ + повтор із новим токеном
-                        logger.LogError($"Api недоступний ({ex.StatusCode}), повтор через 2 с");
+                        // +Unauthenticated: token expired, retry with a fresh token
+                        logger.LogWarning(ex, "Api {Address} unavailable ({Status}), retry in 2 s", apiAddress, ex.StatusCode);
                         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                     }
                 }

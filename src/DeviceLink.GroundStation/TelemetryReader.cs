@@ -4,8 +4,10 @@ using System.IO.Pipelines;
 
 namespace DeviceLink.GroundStation
 {
+    /// <summary>Reads telemetry frames from the drone stream.</summary>
     public static class TelemetryReader
     {
+        /// <summary>Reads frames from the PipeReader until end of stream and invokes the callback for each valid telemetry.</summary>
         public static async Task ReadAsync(
             PipeReader reader, Action<byte, Telemetry> onTelemetry, CancellationToken cancellationToken)
         {

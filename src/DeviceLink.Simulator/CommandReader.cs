@@ -7,8 +7,10 @@ using System.Text;
 
 namespace DeviceLink.Simulator
 {
+    /// <summary>Reads frames from the station and extracts drone commands from them.</summary>
     public static class CommandReader
     {
+        /// <summary>Parses incoming frames until the stream closes and passes each command to the callback.</summary>
         public static async Task ReadAsync(PipeReader reader, Action<Command> onCommand, CancellationToken ct)
         {
             try

@@ -20,7 +20,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Services\" />
+    <ProjectReference Include="..\DeviceLink.Hosting\DeviceLink.Hosting.csproj" />
   </ItemGroup>
 
 </Project>

@@ -3,11 +3,16 @@ using System.Buffers.Binary;
 
 namespace DeviceLink.Protocol
 {
+    /// <summary>Frame codec: AA 55 | length (u16 BE) | type | seq | payload | CRC-16 (BE) over bytes 2..end of payload.</summary>
     public static class FrameCodec
     {
+        /// <summary>Header size: marker (2) + length (2) + type (1) + seq (1).</summary>
         public const int HeaderSize = 6;
+        /// <summary>Size of the CRC-16 at the end of the frame.</summary>
         public const int CrcSize = 2;
+        /// <summary>Maximum payload length in bytes.</summary>
         public const int MaxPayload = 1024;
+        /// <summary>Writes a complete frame (header, payload, CRC) to the output buffer.</summary>
         public static void Write(IBufferWriter<byte> output, byte type, byte sequence,
             ReadOnlySpan<byte> payload)
         {
@@ -35,6 +40,7 @@ namespace DeviceLink.Protocol
             output.Advance(frameSize);
         }
 
+        /// <summary>Finds and parses the next valid frame, skipping garbage; the buffer is advanced past consumed data.</summary>
         public static bool TryParse(ref ReadOnlySequence<byte> buffer, out Frame frame)
         {
             frame = default;
@@ -63,6 +69,7 @@ namespace DeviceLink.Protocol
             return false;
         }
 
+        /// <summary>Advances the reader to the AA 55 marker (or a trailing AA); false if no marker is found.</summary>
         private static bool TryFindMarker(ref SequenceReader<byte> reader)
         {
             while(reader.TryAdvanceTo(0xAA, advancePastDelimiter: false))
@@ -78,8 +85,10 @@ namespace DeviceLink.Protocol
             return false;
         }
 
+        /// <summary>Result of a frame read attempt: success, need more data, or corrupt frame.</summary>
         private enum ParseStatus { Success, NeedData, Invalid}
 
+        /// <summary>Reads a frame starting at the marker, validating length and CRC.</summary>
         private static ParseStatus TryReadFrame(
             ReadOnlySequence<byte> candidate, out Frame frame, out int frameSize)
         {

@@ -1,10 +1,12 @@
 ﻿namespace DeviceLink.Protocol
 {
+    /// <summary>CRC-16/CCITT-FALSE checksum (polynomial 0x1021, initial 0xFFFF).</summary>
     public static class Crc16
     {
         private const ushort Polynomial = 0x1021;
         private const ushort InitialValue = 0xFFFF;
 
+        /// <summary>Computes CRC-16 over the given bytes (bitwise, MSB first).</summary>
         public static ushort Compute(ReadOnlySpan<byte> input)
         {
             ushort crc = InitialValue;

@@ -3,13 +3,16 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Threading.Channels;
 
-
 namespace DeviceLink.Api
 {
-    public sealed class TelemetryHub
+    /// <summary>Fans out station telemetry points to all active viewer subscribers.</summary>
+    public sealed class TelemetryHub(ILogger<TelemetryHub> logger)
     {
-        public ConcurrentDictionary<Guid, Channel<TelemetryPoint>> _subscribers = new();
+        private readonly ConcurrentDictionary<Guid, Channel<TelemetryPoint>> _subscribers = new();
 
+        public int SubscriberCount => _subscribers.Count;
+
+        /// <summary>Writes the point to every subscriber's channel without waiting.</summary>
         public void Publish(TelemetryPoint point)
         {
             foreach (var channel in _subscribers.Values)
@@ -18,6 +21,7 @@ namespace DeviceLink.Api
             }
         }
 
+        /// <summary>Registers a subscriber with a bounded buffer (oldest points dropped) and streams points until cancelled.</summary>
         public async IAsyncEnumerable<TelemetryPoint> SubscribeAsync(
             [EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
@@ -29,6 +33,7 @@ namespace DeviceLink.Api
 
             var id = Guid.NewGuid();
             _subscribers[id] = channel;
+            logger.LogDebug("Subscriber {Id} added, total {Count}", id, _subscribers.Count);
 
             try
             {
@@ -38,6 +43,7 @@ namespace DeviceLink.Api
             finally
             {
                 _subscribers.TryRemove(id, out _);
+                logger.LogDebug("Subscriber {Id} removed, total {Count}", id, _subscribers.Count);
             }
         }
     }

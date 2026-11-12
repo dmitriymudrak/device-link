@@ -1,48 +1,65 @@
-﻿using System.Net;
+﻿using DeviceLink.Hosting;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
+using Serilog;
 
 namespace DeviceLink.GroundStation.Runner
 {
+    /// <summary>Entry point of the headless ground station.</summary>
     internal class Program
     {
+        // Positional args as before: [port] [apiAddress] [stationId].
+        // --Station:Port=... etc. also work, as do env vars like Station__AccessToken=...
+        /// <summary>Configures the Generic Host, registers ApiForwarder and StationWorker and runs them.</summary>
         static async Task Main(string[] args)
         {
-
-
-            using (var cts = new CancellationTokenSource())
+            AppLoggingExtensions.HookUnhandledExceptions();
+            try
             {
-                int port = args.Length > 0 ? int.Parse(args[0]) : 5000;
-                string stationId = args.Length > 2 ? args[2] : "station-1";
-                string apiAddress = args.Length > 1 ? args[1] : "http://localhost:5100";
-                Console.CancelKeyPress += (_, e) =>
+                var builder = Host.CreateApplicationBuilder(new HostApplicationBuilderSettings
                 {
-                    e.Cancel = true;
-                    cts.Cancel();
-                };
+                    Args = args,
+                    ContentRootPath = AppContext.BaseDirectory
+                });
+                builder.Configuration.AddInMemoryCollection(PositionalArgs(args));
+                builder.AddDeviceLinkLogging("Runner");
 
-                var forwarder = new ApiForwarder(apiAddress, stationId, () => auth.GetAccessTokenAsync());
+                builder.Services.AddOptions<RunnerOptions>().BindConfiguration(RunnerOptions.Section)
+                    .ValidateDataAnnotations().ValidateOnStart();
 
-                var listener = new DroneListener(
-                    new IPEndPoint(IPAddress.Loopback, port),
-                    (seq, t) => 
-                    {
-                        Console.WriteLine($"{DateTime.Now:HH:mm:ss} seq={seq,3} lat={t.Latitude:F7} lon={t.Longitude:F7}");
-                        forwarder.Enqueue(seq, t);
-                    });
-
-                Console.WriteLine($"Станція {stationId}: дрон на порту {port}, Api {apiAddress}. Ctrl+C — зупинка.");
-
-
-                try
+                builder.Services.AddSingleton(sp =>
                 {
-                    Task[] tasks = [listener.RunAsync(cts.Token), forwarder.RunAsync(cts.Token)];
-                    await await Task.WhenAny(tasks);
-                }
-                catch (OperationCanceledException) when (cts.IsCancellationRequested)
-                {
-                    Console.WriteLine("Станцію зупинено.");
-                }
+                    var o = sp.GetRequiredService<IOptions<RunnerOptions>>().Value;
+                    return new ApiForwarder(o.ApiAddress, o.StationId,
+                        () => Task.FromResult(o.AccessToken ?? ""),
+                        sp.GetRequiredService<ILogger<ApiForwarder>>());
+                });
+                builder.Services.AddHostedService<StationWorker>();
+
+                await builder.Build().RunAsync();
             }
+            catch (Exception ex) when (ex is not HostAbortedException)
+            {
+                Log.Fatal(ex, "Runner terminated unexpectedly");
+            }
+            finally
+            {
+                await Log.CloseAndFlushAsync();
+            }
+        }
 
+        /// <summary>Maps positional args [port] [apiAddress] [stationId] to Station section keys.</summary>
+        private static Dictionary<string, string?> PositionalArgs(string[] args)
+        {
+            var positional = args.TakeWhile(a => !a.StartsWith('-')).ToArray();
+            var map = new Dictionary<string, string?>();
+            if (positional.Length > 0) map[$"{RunnerOptions.Section}:Port"] = positional[0];
+            if (positional.Length > 1) map[$"{RunnerOptions.Section}:ApiAddress"] = positional[1];
+            if (positional.Length > 2) map[$"{RunnerOptions.Section}:StationId"] = positional[2];
+            return map;
         }
     }
 }

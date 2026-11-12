@@ -1,29 +1,35 @@
 using Avalonia.Controls;
+using Avalonia.Threading;
 using DeviceLink.Api.Protos;
-using Grpc.Core;
-using Grpc.Net.Client;
+using DeviceLink.Viewer.Desktop.Services;
 using Mapsui;
 using Mapsui.Projections;
 using Mapsui.Tiling;
 using Mapsui.UI.Avalonia;
-using System;
+using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
-using System.Threading;
-using System.Threading.Tasks;
+
 namespace DeviceLink.Viewer.Desktop;
 
+/// <summary>Main window: map with drones and the station list.</summary>
 public partial class MainWindow : Window
 {
+    private const string BaseTitle = "DeviceLink Viewer";
+
     private readonly DroneMapLayer _drones = new();
     private readonly ObservableCollection<string> _stations = new();
-    private readonly CancellationTokenSource _cts = new();
     private readonly MapControl _mapControl = new();
-    public MainWindow()
-    {
-        InitializeComponent();
+    private readonly ILogger<MainWindow>? _logger;
 
-        Mapsui.Logging.Logger.LogDelegate += (level, message, ex) =>
-    System.Diagnostics.Debug.WriteLine($"[Mapsui {level}] {message} {ex}");
+    // For the Avalonia designer.
+    /// <summary>Creates the window without dependencies (for the designer).</summary>
+    public MainWindow() => InitializeComponent();
+
+    /// <summary>Sets up the OSM map, station list and telemetry subscription for the window's lifetime.</summary>
+    public MainWindow(TelemetrySubscriber subscriber, DroneMapLayer drones, ILogger<MainWindow> logger) : this()
+    {
+        _drones = drones;
+        _logger = logger;
 
         var map = new Map();
         map.Layers.Add(OpenStreetMap.CreateTileLayer("DeviceLink-Viewer"));
@@ -32,54 +38,49 @@ public partial class MainWindow : Window
         var (x, y) = SphericalMercator.FromLonLat(30.5234, 50.4501);
         map.Navigator.CenterOnAndZoomTo(new MPoint(x, y), 5);
 
-        _mapControl.Map = map;  
+        _mapControl.Map = map;
         MapHost.Content = _mapControl;
 
         StationsList.ItemsSource = _stations;
-
-        Opened += (_, _) => _ = SubscribeAsync("http://localhost:5100", _cts.Token);
-        Closing += (_, _) => _cts.Cancel();
-
         StationsList.SelectionChanged += (_, _) =>
         {
-            _drones.Select(StationsList.SelectedItem as string);
+            var station = StationsList.SelectedItem as string;
+            _logger.LogInformation("Station {Station} selected", station);
+            _drones.Select(station);
             _mapControl.Refresh();
+        };
+
+        Opened += (_, _) =>
+        {
+            subscriber.PointReceived += OnPoint;
+            subscriber.StatusChanged += OnStatus;
+            subscriber.Start();
+            _logger.LogInformation("Main window opened");
+        };
+
+        Closing += (_, _) =>
+        {
+            subscriber.PointReceived -= OnPoint;
+            subscriber.StatusChanged -= OnStatus;
+            subscriber.Stop();
+            _logger.LogInformation("Main window closing");
         };
     }
 
-    private async Task SubscribeAsync(string apiAddress, CancellationToken ct)
-    {
-        using var channel = GrpcChannel.ForAddress(apiAddress);
-        var client = new TelemetryService.TelemetryServiceClient(channel);
-        try
+    /// <summary>Updates the map with the point on the UI thread; adds new stations to the list.</summary>
+    private void OnPoint(TelemetryPoint point) =>
+        Dispatcher.UIThread.Post(() =>
         {
-            while (true)
+            if (_drones.Update(point))
             {
-                try
-                {
-                    using var call = client.SubscribeTelemetry(new SubscribeRequest(), cancellationToken: ct);
-                    Title = "DeviceLink Viewer";
-                    await foreach (var point in call.ResponseStream.ReadAllAsync(ct))
-                    {
-                       // Title = $"---{point.StationId}: {point.LatE7 / 1e7:F5}, {point.LonE7 / 1e7:F5}";
-                        if (_drones.Update(point))
-                        {
-                            _stations.Add(point.StationId);
-                            
-                        }
-                        _mapControl.Refresh();
-                    }
-                }
-                catch (RpcException ex) when (!ct.IsCancellationRequested)
-                {
-                    Title = $"DeviceLink Viewer — Api недоступний ({ex.StatusCode}), повтор через 2 с";
-                    await Task.Delay(TimeSpan.FromSeconds(2), ct);
-                }
+                _logger?.LogInformation("New station {Station} on map", point.StationId);
+                _stations.Add(point.StationId);
             }
-        }
-        catch (Exception) when (ct.IsCancellationRequested)
-        {
-            // вікно закрили
-        }
-    }
+            _mapControl.Refresh();
+        });
+
+    /// <summary>Shows the connection status in the window title.</summary>
+    private void OnStatus(string? error) =>
+        Dispatcher.UIThread.Post(() =>
+            Title = error is null ? BaseTitle : $"{BaseTitle} вЂ” {error}, РїРѕРІС‚РѕСЂвЂ¦");
 }

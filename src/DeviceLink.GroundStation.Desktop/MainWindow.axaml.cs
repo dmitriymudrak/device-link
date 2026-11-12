@@ -1,115 +1,92 @@
-using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Media;
 using Avalonia.Threading;
 using DeviceLink.GroundStation.Desktop.Auth;
-using DeviceLink.GroundStation.Desktop.Options;
+using DeviceLink.GroundStation.Desktop.Services;
 using DeviceLink.Protocol;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using System;
-using System.Linq;
-using System.Net;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace DeviceLink.GroundStation.Desktop;
 
+/// <summary>Station main window: drone position, link status and command buttons.</summary>
 public partial class MainWindow : Window
 {
+    private static readonly TimeSpan LinkTimeout = TimeSpan.FromSeconds(3);
 
-    private readonly CancellationTokenSource _cts = new();
-    private readonly ApiForwarder _forwarder;
-    private readonly DroneListener _listener;
+    private readonly StationService? _station;
+    private readonly ILogger<MainWindow>? _logger;
+    private readonly DispatcherTimer _linkTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private DateTime _lastPointAt = DateTime.MinValue;
-    
-    public MainWindow(IOptions<ApiOptions> apiOptions, AuthService auth)
+    private bool _linkUp;
+
+    // For the Avalonia designer.
+    public MainWindow() => InitializeComponent();
+
+    /// <summary>Wires the command buttons and starts/stops the station together with the window.</summary>
+    public MainWindow(StationService station, AuthService auth, ILogger<MainWindow> logger) : this()
     {
-        InitializeComponent();
-        StationText.Text = $"Станція {apiOptions.Value.StationName}, порт {apiOptions.Value.Port}";
-        _listener = new DroneListener(new IPEndPoint(IPAddress.Loopback, apiOptions.Value.Port), OnTelemetry);
-        _forwarder = new(apiOptions.Value.Address, apiOptions.Value.StationName, () => auth.GetAccessTokenAsync());
+        _station = station;
+        _logger = logger;
+
+        StationText.Text = $"РЎС‚Р°РЅС†С–СЏ {station.StationName}, РїРѕСЂС‚ {station.Port} вЂ” {auth.UserName}";
 
         HoldButton.Click += (_, _) => Send(CommandCode.Hold);
         ResumeButton.Click += (_, _) => Send(CommandCode.Resume);
         DestroyButton.Click += (_, _) => Send(CommandCode.Destroy);
 
-        var timer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
-        timer.Tick += (_, _) => LinkText.Text =
-            DateTime.Now - _lastPointAt < TimeSpan.FromSeconds(3) ? "Дрон: на зв'язку" : "Дрон: немає даних";
-        timer.Start();
+        _linkTimer.Tick += (_, _) => UpdateLinkState();
 
-        Opened += async (_, _) =>
+        Opened += (_, _) =>
         {
-            if (!await auth.TryRestoreAsync())                    
-            {
-                var ok = await new LoginWindow(auth).ShowDialog<bool>(this);
-                if (!ok) { Close(); return; }
-            }
-
-            if (!auth.User!.FindAll("roles").Any(r => r.Value == "telemetry-sender"))
-            {
-                await auth.LogoutAsync();    
-                await MessageAsync("Немає доступу до станції. Потрібна роль telemetry-sender.");
-                Close();
-                return;
-            }
-            StationText.Text += $" — {auth.User?.FindFirst("preferred_username")?.Value}";
-            _ = RunGuardedAsync(_listener.RunAsync, "Дрон");
-            _ = RunGuardedAsync(_forwarder.RunAsync, "Api");
+            station.TelemetryReceived += OnTelemetry;
+            station.Faulted += OnFaulted;
+            station.Start();
+            _linkTimer.Start();
+            _logger.LogInformation("Main window opened");
         };
-        Closing += (_, _) => _cts.Cancel();
+
+        Closing += (_, _) =>
+        {
+            _linkTimer.Stop();
+            station.TelemetryReceived -= OnTelemetry;
+            station.Faulted -= OnFaulted;
+            station.Stop();
+            _logger.LogInformation("Main window closing");
+        };
     }
-    private void OnTelemetry(byte seq, Telemetry t)
+
+    /// <summary>Updates the link indicator from the last point time and logs changes.</summary>
+    private void UpdateLinkState()
     {
-        _forwarder.Enqueue(seq, t);
+        var up = DateTime.Now - _lastPointAt < LinkTimeout;
+        LinkText.Text = up ? "Р”СЂРѕРЅ: РЅР° Р·РІ'СЏР·РєСѓ" : "Р”СЂРѕРЅ: РЅРµРјР°С” РґР°РЅРёС…";
+
+        if (up != _linkUp)
+        {
+            _linkUp = up;
+            if (up) _logger?.LogInformation("Drone link up");
+            else _logger?.LogWarning("Drone link lost: no telemetry for {Timeout}", LinkTimeout);
+        }
+    }
+
+    /// <summary>Shows the new drone position, marshalling to the UI thread.</summary>
+    private void OnTelemetry(byte seq, Telemetry t) =>
         Dispatcher.UIThread.Post(() =>
         {
             _lastPointAt = DateTime.Now;
             PositionText.Text = $"seq {seq,3}   {t.Latitude:F6}, {t.Longitude:F6}";
         });
-    }
 
-    private void Send(CommandCode code) =>
-        LogText.Text = _listener.TrySend(code)
-            ? $"{DateTime.Now:HH:mm:ss} надіслано: {code}"
-            : $"{DateTime.Now:HH:mm:ss} дрон не підключений";
+    /// <summary>Shows a station background loop error on the UI thread.</summary>
+    private void OnFaulted(string name, Exception ex) =>
+        Dispatcher.UIThread.Post(() => LogText.Text = $"{name}: {ex.Message}");
 
-    private async Task RunGuardedAsync(Func<CancellationToken, Task> run, string name)
+    /// <summary>Sends a command to the drone and shows the result in the log line.</summary>
+    private void Send(CommandCode code)
     {
-        try
-        {
-            await Task.Run(() => run(_cts.Token));
-        }
-        catch (OperationCanceledException)
-        {
-            // вікно закрили
-        }
-        catch (Exception ex)
-        {
-            LogText.Text = $"{name}: {ex.Message}";
-        }
-    }
-    private Task MessageAsync(string text)
-    {
-        var w = new Window
-        {
-            Title = "Доступ заборонено",
-            Width = 360,
-            SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-            Content = new StackPanel
-            {
-                Margin = new Thickness(20),
-                Spacing = 12,
-                Children =
-            {
-                new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap },
-                new Button { Content = "OK" }
-            }
-            }
-        };
-        ((Button)((StackPanel)w.Content).Children[1]).Click += (_, _) => w.Close();
-        return w.ShowDialog(this);
+        var sent = _station!.TrySend(code);
+        LogText.Text = sent
+            ? $"{DateTime.Now:HH:mm:ss} РЅР°РґС–СЃР»Р°РЅРѕ: {code}"
+            : $"{DateTime.Now:HH:mm:ss} РґСЂРѕРЅ РЅРµ РїС–РґРєР»СЋС‡РµРЅРёР№";
     }
 }

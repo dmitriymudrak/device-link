@@ -2,18 +2,21 @@
 
 namespace DeviceLink.Simulator
 {
+    /// <summary>Closed drone route: linear interpolation between waypoints.</summary>
     public sealed class Route
     {
         private readonly (double lat, double lon)[] _points;
         private readonly int _stepsPerSegment;
         private int _step;
 
+        /// <summary>Sets the waypoints and the number of interpolation steps per segment.</summary>
         public Route((double lat, double lon)[] points, int stepsPerSegment)
         {
             _points = points;
             _stepsPerSegment = stepsPerSegment;
         }
 
+        /// <summary>Returns the next route point; wraps to the start after the last waypoint.</summary>
         public Telemetry Next()
         {
             int segment = _step / _stepsPerSegment;

@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="DeviceLink.GroundStation.Desktop.LoginWindow"
+        Title="Вхід" Width="360" SizeToContent="Height"
+        WindowStartupLocation="CenterScreen" CanResize="False">
+	<StackPanel Margin="20" Spacing="12">
+		<TextBlock Text="Відкрито браузер для входу. Після входу застосунок продовжить роботу." TextWrapping="Wrap"/>
+		<StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+			<Button Content="Відкрити ще раз" Click="Retry_Click"/>
+			<Button Content="Скасувати" Click="Cancel_Click"/>
+		</StackPanel>
+	</StackPanel>
+</Window>

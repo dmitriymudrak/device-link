@@ -19,7 +19,7 @@ namespace DeviceLink.GroundStation.Runner
                     cts.Cancel();
                 };
 
-                var forwarder = new ApiForwarder(apiAddress, stationId);
+                var forwarder = new ApiForwarder(apiAddress, stationId, () => auth.GetAccessTokenAsync());
 
                 var listener = new DroneListener(
                     new IPEndPoint(IPAddress.Loopback, port),

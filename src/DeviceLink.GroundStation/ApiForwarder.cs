@@ -3,16 +3,13 @@ using DeviceLink.Protocol;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Grpc.Net.Client;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+using Microsoft.Extensions.Logging;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace DeviceLink.GroundStation
 {
-    public sealed class ApiForwarder(string apiAddress, string stationId)
+    public sealed class ApiForwarder(string apiAddress, string stationId, 
+        Func<Task<string>> getAccessToken, ILogger<ApiForwarder> logger)
     {
         private readonly Channel<TelemetryPoint> _queue
             = Channel.CreateBounded<TelemetryPoint>(new BoundedChannelOptions(10)
@@ -34,13 +31,19 @@ namespace DeviceLink.GroundStation
 
         public async Task RunAsync(CancellationToken cancellationToken)
         {
-            using (var channel = GrpcChannel.ForAddress(apiAddress))
-            {
-                var client = new TelemetryService.TelemetryServiceClient(channel);
+            var callCreds = CallCredentials.FromInterceptor(async (_, metadata) =>
+                    metadata.Add("Authorization", $"Bearer {await getAccessToken()}"));
 
+            using (var channel = GrpcChannel.ForAddress(apiAddress, new GrpcChannelOptions // +
+            {
+                Credentials = ChannelCredentials.Create(ChannelCredentials.Insecure, callCreds),
+                UnsafeUseInsecureChannelCallCredentials = true   // http
+            }))
+            {
+
+                var client = new TelemetryService.TelemetryServiceClient(channel);
                 while (true)
                 {
-
                     try
                     {
                         using (var call = client.UploadTelemetry(cancellationToken: cancellationToken))
@@ -53,7 +56,8 @@ namespace DeviceLink.GroundStation
                     }
                     catch (RpcException ex) when (!cancellationToken.IsCancellationRequested)
                     {
-                        Console.Error.WriteLine($"Api недоступний ({ex.StatusCode}), повтор через 2 с");
+                        // +Unauthenticated, токен експ + повтор із новим токеном
+                        logger.LogError($"Api недоступний ({ex.StatusCode}), повтор через 2 с");
                         await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
                     }
                 }

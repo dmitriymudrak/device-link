@@ -15,10 +15,25 @@
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
+    <PackageReference Include="Duende.IdentityModel.OidcClient" Version="7.1.1" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\DeviceLink.GroundStation\DeviceLink.GroundStation.csproj" />
+    <ProjectReference Include="..\DeviceLink.Hosting\DeviceLink.Hosting.csproj" />
     <ProjectReference Include="..\DeviceLink.Protocol\DeviceLink.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Update="LoginWindow.axaml.cs">
+      <DependentUpon>LoginWindow.axaml</DependentUpon>
+    </Compile>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

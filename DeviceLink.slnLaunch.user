@@ -3,11 +3,15 @@
     "Name": "Новый профиль",
     "Projects": [
       {
-        "Path": "DeviceLink.GroundStation.Runner\\DeviceLink.GroundStation.Runner.csproj",
+        "Path": "src\\DeviceLink.Simulator\\DeviceLink.Simulator.csproj",
         "Action": "Start"
       },
       {
-        "Path": "DeviceLink.Simulator\\DeviceLink.Simulator.csproj",
+        "Path": "src\\DeviceLink.Api\\DeviceLink.Api.csproj",
+        "Action": "Start"
+      },
+      {
+        "Path": "src\\DeviceLink.GroundStation.Desktop\\DeviceLink.GroundStation.Desktop.csproj",
         "Action": "Start"
       }
     ]

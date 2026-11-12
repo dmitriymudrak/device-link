@@ -32,11 +32,11 @@ public partial class MainWindow : Window
         var (x, y) = SphericalMercator.FromLonLat(30.5234, 50.4501);
         map.Navigator.CenterOnAndZoomTo(new MPoint(x, y), 5);
 
-        _mapControl.Map = map;
+        _mapControl.Map = map;  
         MapHost.Content = _mapControl;
 
         StationsList.ItemsSource = _stations;
-      //  _drones.Update(new TelemetryPoint { StationId = "test", LatE7 = 504501000, LonE7 = 305234000 });
+
         Opened += (_, _) => _ = SubscribeAsync("http://localhost:5100", _cts.Token);
         Closing += (_, _) => _cts.Cancel();
 

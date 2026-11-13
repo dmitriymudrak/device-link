@@ -12,12 +12,40 @@
 
 ## Швидкий старт
 
-Потрібні [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0), Docker і Windows (десктопна станція зберігає сесію через DPAPI).
+### Що потрібно
+
+- Windows 10/11: десктопна станція зберігає сесію через DPAPI.
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0); перевірка: `dotnet --version`.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/), запущений; перевірка: `docker version`.
+- Вільні порти: `8080` (Keycloak), `5100` (Api), `5000` (порт дрона для десктопної станції).
+- Дозвіл запускати локальні PowerShell-скрипти. На свіжому Windows він вимкнений; увімкнути один раз для поточного користувача:
+
+  ```powershell
+  Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+  ```
+
+  Або без зміни політики: `powershell -ExecutionPolicy Bypass -File .\run-desktop.ps1`.
+
+### Запуск
+
+**0. Код:**
+
+```powershell
+git clone <url репозиторію> device-link
+cd device-link
+```
 
 **1. Бекенд у Docker** — Keycloak, Postgres, Api, консольна станція й симулятор:
 
 ```powershell
 docker compose --profile apps up -d --build
+```
+
+Перша збірка образів триває кілька хвилин (завантажуються образи .NET SDK і Keycloak). Keycloak при першому старті імпортує realm `realms/realm-export.json` з користувачами й клієнтами; це ще близько хвилини. Готовність:
+
+```powershell
+docker compose logs keycloak | Select-String "Import finished|started in"   # Keycloak готовий
+docker compose logs runner --tail 5                                          # seq=... — телеметрія йде
 ```
 
 **2. Десктопні застосунки на хості:**
@@ -28,12 +56,20 @@ docker compose --profile apps up -d --build
 ./run-desktop.ps1 -NoSimulator   # без локального симулятора
 ```
 
-Скрипт перевіряє, що Keycloak (`localhost:8080`) і Api (`localhost:5100`) доступні, і відкриває два вікна:
+Скрипт перевіряє, що Keycloak (`localhost:8080`) і Api (`localhost:5100`) доступні, а порт 5000 вільний. Якщо Keycloak ще стартує, скрипт так і скаже — зачекайте хвилину й повторіть. Далі відкриваються два вікна:
 
 - **станція:** спершу вхід через браузер (`telemetry-sender` / `1234`, див. [Користувачі й ролі](#користувачі-й-ролі)), далі «Дрон: на зв'язку», координати, кнопки «Зависнути», «Продовжити», «Знищити». Локальний симулятор стартує, коли станція після входу відкриє порт 5000;
 - **Viewer:** карта Києва з маркерами дронів — і локальної станції, і `docker-station-1` з контейнера; клік на станцію в списку зліва показує її слід. Поки у Viewer немає входу, Api відхиляє його підписку (потрібна роль `viewer`), і в заголовку вікна видно «Api недоступний (Unauthenticated)».
 
-Закриття будь-якого з вікон або `Ctrl+C` зупиняє все, що запустив скрипт. Контейнери працюють далі: `docker compose --profile apps stop`.
+Закриття будь-якого з вікон або `Ctrl+C` зупиняє все, що запустив скрипт. Контейнери працюють далі.
+
+### Зупинка і очищення
+
+```powershell
+docker compose --profile apps stop      # зупинити контейнери, дані Keycloak лишаються
+docker compose --profile apps down      # видалити контейнери, дані Keycloak лишаються (том kc_db)
+docker compose --profile apps down -v   # видалити все разом з базою Keycloak; наступний старт заново імпортує realm
+```
 
 ### Користувачі й ролі
 
@@ -57,7 +93,7 @@ Realm `device-link-realm` (`realms/realm-export.json`) імпортується 
 
 Адмінка Keycloak: `http://localhost:8080`, `admin` / `admin`.
 
-Імпорт realm спрацьовує лише для порожньої бази. Якщо Keycloak уже запускався раніше, нові користувачі й клієнти з `realm-export.json` у нього не потраплять. Тоді або додайте їх в адмінці (клієнт `station-runner` — скриптом `./realms/add-station-runner.sh`), або почніть з чистої бази: `docker compose down -v` (видаляє **всі** дані Keycloak), потім `docker compose --profile apps up -d`.
+Імпорт realm спрацьовує лише для порожньої бази. Якщо Keycloak уже запускався раніше, нові користувачі й клієнти з `realm-export.json` у нього не потраплять. Тоді або додайте їх в адмінці (клієнт `station-runner` — скриптом `./realms/add-station-runner.ps1`), або почніть з чистої бази: `docker compose down -v` (видаляє **всі** дані Keycloak), потім `docker compose --profile apps up -d`.
 
 Варіант без контейнерів застосунків: `docker compose up -d` (лише Keycloak і Postgres), потім `./run.ps1` — те саме, що `run-desktop.ps1`, але Api запускається локально.
 
@@ -86,7 +122,7 @@ docker compose --profile apps logs -f runner  # телеметрія станц�
 
 - Консольна станція отримує токен сама, через client credentials клієнта `station-runner` (сервісний акаунт з роллю `telemetry-sender`). Секрет для розробки — `station-runner-dev-secret`, змінюється змінною `STATION_RUNNER_SECRET`.
 - Keycloak видає токени з `iss=http://localhost:8080/...` і для хоста, і для контейнерів (`KC_HOSTNAME` + `KC_HOSTNAME_BACKCHANNEL_DYNAMIC`). Api в контейнері читає discovery з `http://keycloak:8080` (`Jwt__MetadataAddress`).
-- `--import-realm` не оновлює realm, який уже є в базі. Якщо Keycloak запускався до появи `station-runner`, додайте клієнт скриптом `./realms/add-station-runner.sh`. Повторний запуск нічого не змінює.
+- `--import-realm` не оновлює realm, який уже є в базі. Якщо Keycloak запускався до появи `station-runner`, додайте клієнт скриптом `./realms/add-station-runner.ps1`. Повторний запуск нічого не змінює.
 - У контейнерах логи йдуть лише в stdout (`LogFile__Enabled=false`); поза Docker — ще й у `%LOCALAPPDATA%\DeviceLink\logs`.
 
 ## Архітектура
